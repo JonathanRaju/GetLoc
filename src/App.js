@@ -5,36 +5,44 @@ import { ref, push } from "firebase/database";
 function App() {
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [gpsPrompted, setGpsPrompted] = useState(false);
 
   useEffect(() => {
-    checkPermissionAndFetchLocation();
+    requestLocation();
   }, []);
 
-  // Function to check permission and fetch GPS location
+  // 📌 Function to request location (GPS first, fallback to IP)
+  const requestLocation = () => {
+    console.log("📌 Checking location permission...");
+    checkPermissionAndFetchLocation();
+  };
+
+  // 📌 Check and Request Permission for GPS
   const checkPermissionAndFetchLocation = async () => {
     if ("permissions" in navigator) {
       try {
         const permission = await navigator.permissions.query({ name: "geolocation" });
+
         if (permission.state === "granted") {
+          console.log("✅ Location permission granted");
           getGPSLocation();
-        } else if (permission.state === "prompt" && !gpsPrompted) {
-          setGpsPrompted(true);
+        } else if (permission.state === "prompt") {
+          console.log("🔔 Prompting for location permission...");
           getGPSLocation();
         } else {
+          console.warn("❌ Location permission denied. Asking user to enable it...");
           alert("Please enable location services in your browser settings.");
         }
       } catch (err) {
-        console.warn("Permission API failed, trying GPS...", err);
+        console.warn("⚠️ Permission API failed, trying GPS...", err);
         getGPSLocation();
       }
     } else {
+      console.warn("⚠️ Permission API not supported, trying GPS...");
       getGPSLocation();
     }
   };
 
-  // Function to Get GPS Location
+  // 📌 Get Location Using GPS
   const getGPSLocation = () => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -42,33 +50,29 @@ function App() {
           const { latitude, longitude } = position.coords;
           saveLocation(latitude, longitude, "GPS");
         },
-        (error) => {
-          console.warn("GPS failed. Ask user to enable GPS.", error);
-          setError("Please enable location services.");
+        async (error) => {
+          console.warn("❌ GPS failed, trying IP-based location...", error);
+          getIPLocation();
         },
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: true }
       );
     } else {
-      setError("Geolocation is not supported.");
+      console.error("❌ Geolocation not supported");
     }
   };
 
-  // Function to Get IP-Based Location
+  // 📌 Get Location Using IP (Fallback)
   const getIPLocation = async () => {
     try {
-      const response = await fetch("https://ipapi.co/json/");
+      const response = await fetch("https://ip-api.com/json");
       const data = await response.json();
-      if (data.latitude && data.longitude) {
-        saveLocation(data.latitude, data.longitude, "IP", data.city, data.country);
-      } else {
-        setError("Unable to get location from IP.");
-      }
+      saveLocation(data.lat, data.lon, "IP-based", data.city, data.country);
     } catch (err) {
-      setError("Failed to fetch IP location.");
+      console.error("❌ IP Geolocation failed:", err);
     }
   };
 
-  // Save Location to Firebase
+  // 📌 Function to Store Location in Firebase
   const saveLocation = async (latitude, longitude, method, city = "", country = "") => {
     const locationData = {
       latitude,
@@ -83,7 +87,7 @@ function App() {
     setLocation(locationData);
     setLoading(false);
 
-    // Store in Firebase
+    // Store in Firebase Realtime Database
     const locationRef = ref(database, "userLocations");
     await push(locationRef, locationData);
   };
@@ -191,11 +195,11 @@ function App() {
             <p>Fetching location...</p>
           ) : location ? (
             <div>
-              <p>📍 Latitude: {location.latitude}</p>
-              <p>📍 Longitude: {location.longitude}</p>
-              {location.city && <p>🏙️ City: {location.city}</p>}
-              {location.country && <p>🌍 Country: {location.country}</p>}
-              <p>🔍 Method: {location.method}</p>
+              <p>Latitude: {location.latitude}</p>
+              <p>Longitude: {location.longitude}</p>
+              {location.city && <p>City: {location.city}</p>}
+              {location.country && <p>Country: {location.country}</p>}
+              <p>Method: {location.method}</p>
               <a
                 href={location.mapLink}
                 target="_blank"
@@ -206,23 +210,7 @@ function App() {
               </a>
             </div>
           ) : (
-            <p style={{ color: "red" }}>{error || "Could not retrieve location"}</p>
-          )}
-          {error && (
-            <button
-              onClick={checkPermissionAndFetchLocation}
-              style={{
-                marginTop: "10px",
-                padding: "10px",
-                backgroundColor: "#1877f2",
-                color: "white",
-                border: "none",
-                borderRadius: "5px",
-                cursor: "pointer",
-              }}
-            >
-              Enable GPS & Retry
-            </button>
+            <p>Could not retrieve location</p>
           )}
         </div> */}
       </div>
