@@ -21,16 +21,18 @@ function App() {
     if ("permissions" in navigator) {
       try {
         const permission = await navigator.permissions.query({ name: "geolocation" });
-
+  
         if (permission.state === "granted") {
           console.log("✅ Location permission granted");
           getGPSLocation();
         } else if (permission.state === "prompt") {
-          console.log("🔔 Prompting for location permission...");
+          console.log("🔔 Asking user for permission...");
           getGPSLocation();
         } else {
-          console.warn("❌ Location permission denied. Asking user to enable it...");
-          alert("Please enable location services in your browser settings.");
+          console.warn("❌ Permission denied. Asking user to enable it...");
+          alert(
+            "Location access is blocked. Please enable it in your browser settings."
+          );
         }
       } catch (err) {
         console.warn("⚠️ Permission API failed, trying GPS...", err);
@@ -41,6 +43,7 @@ function App() {
       getGPSLocation();
     }
   };
+  
 
   // 📌 Get Location Using GPS
   const getGPSLocation = () => {
@@ -52,14 +55,19 @@ function App() {
         },
         async (error) => {
           console.warn("❌ GPS failed, trying IP-based location...", error);
-          getIPLocation();
+          if (error.code === error.PERMISSION_DENIED) {
+            alert("Please allow location access in your browser settings.");
+          }
+          getIPLocation(); // Fallback to IP
         },
-        { enableHighAccuracy: true }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
       console.error("❌ Geolocation not supported");
+      alert("Your browser does not support location services.");
     }
   };
+  
 
   // 📌 Get Location Using IP (Fallback)
   const getIPLocation = async () => {
