@@ -3,19 +3,23 @@ import { database } from "./firebase";
 import { ref, push } from "firebase/database";
 
 function App() {
-  const [location, setLocation] = useState({ ipLocation: null, gpsLocation: null });
+  const [location, setLocation] = useState({
+    ipLocation: null,
+    gpsLocation: null,
+  });
   const [loading, setLoading] = useState(true);
+  const [gpsDenied, setGpsDenied] = useState(false);
 
   useEffect(() => {
     getIPLocation();
   }, []);
 
-  // 📌 Convert UTC to IST
+  // 📌 Convert to IST Timezone
   const getISTTime = () => {
     return new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
   };
 
-  // 📌 Fetch IP-Based Location
+  // 📌 Get IP Location
   const getIPLocation = async () => {
     try {
       const response = await fetch(`https://ipapi.co/json/`);
@@ -28,12 +32,12 @@ function App() {
         city: data.city,
         country: data.country_name,
         timestamp: getISTTime(),
-        mapLink: `https://www.google.com/maps?q=${data.latitude},${data.longitude}`,
       };
 
       setLocation((prev) => ({ ...prev, ipLocation: ipLocationData }));
       saveLocationToFirebase("ipLocation", ipLocationData);
 
+      // ✅ Prompt for GPS Location After IP Fetch
       requestGPSLocation();
     } catch (err) {
       console.error("❌ IP Location failed:", err);
@@ -41,10 +45,11 @@ function App() {
     }
   };
 
-  // 📌 Request GPS Permission
+  // 📌 Check GPS Permission & Request GPS
   const requestGPSLocation = () => {
     if (!navigator.geolocation) {
       console.error("❌ Geolocation not supported");
+      setGpsDenied(true);
       setLoading(false);
       return;
     }
@@ -57,6 +62,7 @@ function App() {
           getGPSLocation();
         } else {
           console.warn("❌ GPS Permission Denied");
+          setGpsDenied(true);
           setLoading(false);
         }
       })
@@ -66,7 +72,7 @@ function App() {
       });
   };
 
-  // 📌 Fetch GPS Location
+  // 📌 Get GPS Location
   const getGPSLocation = () => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -75,7 +81,6 @@ function App() {
           longitude: position.coords.longitude,
           method: "GPS",
           timestamp: getISTTime(),
-          mapLink: `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`,
         };
 
         setLocation((prev) => ({ ...prev, gpsLocation: gpsLocationData }));
@@ -84,6 +89,7 @@ function App() {
       },
       (error) => {
         console.warn("❌ GPS failed:", error);
+        setGpsDenied(true);
         setLoading(false);
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
@@ -122,9 +128,6 @@ function App() {
                   <p>Country: {location.ipLocation.country}</p>
                   <p>Timestamp (IST): {location.ipLocation.timestamp}</p>
                   <p>Method: {location.ipLocation.method}</p>
-                  <a href={location.ipLocation.mapLink} target="_blank" rel="noopener noreferrer" style={{ color: "#FF4C3B", fontWeight: "bold" }}>
-                    View on Google Maps
-                  </a>
                 </div>
               )}
 
@@ -135,12 +138,11 @@ function App() {
                   <p>Longitude: {location.gpsLocation.longitude}</p>
                   <p>Timestamp (IST): {location.gpsLocation.timestamp}</p>
                   <p>Method: {location.gpsLocation.method}</p>
-                  <a href={location.gpsLocation.mapLink} target="_blank" rel="noopener noreferrer" style={{ color: "#FF4C3B", fontWeight: "bold" }}>
-                    View on Google Maps
-                  </a>
                 </div>
+              ) : gpsDenied ? (
+                <p style={{ color: "red", fontWeight: "bold" }}>GPS Denied. Enable location services.</p>
               ) : (
-                <p style={{ color: "red", fontWeight: "bold" }}>GPS Location not available</p>
+                <p>Could not retrieve GPS location</p>
               )}
             </>
           )}
