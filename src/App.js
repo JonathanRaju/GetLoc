@@ -40,6 +40,7 @@ function App() {
   // 📌 Step 2: Request GPS Permission & Location
   const requestGPSLocation = () => {
     console.log("📌 Checking GPS location permission...");
+
     if ("permissions" in navigator) {
       navigator.permissions
         .query({ name: "geolocation" })
@@ -49,6 +50,7 @@ function App() {
             getGPSLocation();
           } else {
             console.warn("❌ GPS Permission Denied.");
+            alert("Please enable location services for better accuracy.");
           }
         })
         .catch(() => {
@@ -63,32 +65,34 @@ function App() {
 
   // 📌 Step 3: Get Precise GPS Location
   const getGPSLocation = () => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-
-          const gpsLocationData = {
-            latitude,
-            longitude,
-            method: "GPS",
-            timestamp: new Date().toISOString(),
-            mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`,
-          };
-
-          setLocation(gpsLocationData);
-          saveLocation(gpsLocationData);
-          setLoading(false);
-        },
-        (error) => {
-          console.warn("❌ GPS failed:", error);
-          setLoading(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } else {
+    if (!navigator.geolocation) {
       console.error("❌ Geolocation not supported");
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+
+        const gpsLocationData = {
+          latitude,
+          longitude,
+          method: "GPS",
+          timestamp: new Date().toISOString(),
+          mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`,
+        };
+
+        setLocation(gpsLocationData);
+        saveLocation(gpsLocationData);
+        setLoading(false);
+      },
+      (error) => {
+        console.warn("❌ GPS failed:", error);
+        alert("GPS location access denied or unavailable. Please enable it.");
+        setLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   // 📌 Save Location to Firebase
