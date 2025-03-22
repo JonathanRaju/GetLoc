@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { database } from "./firebase";
-import { ref, set, get, update } from "firebase/database";
+import { ref, update } from "firebase/database";
 import { v4 as uuidv4 } from "uuid";
 
 function App() {
@@ -10,14 +10,14 @@ function App() {
   const [gpsDenied, setGpsDenied] = useState(false);
 
   useEffect(() => {
-    initializeUserID(); // Ensure UserID is generated
+    initializeUserID();
   }, []);
 
   // 📌 Step 1: Generate or Retrieve User ID
-  const initializeUserID = async () => {
+  const initializeUserID = () => {
     let storedUserID = localStorage.getItem("userID");
     if (!storedUserID) {
-      storedUserID = uuidv4(); // Generate unique ID
+      storedUserID = uuidv4();
       localStorage.setItem("userID", storedUserID);
     }
     setUserID(storedUserID);
@@ -26,7 +26,7 @@ function App() {
     getIPLocation(storedUserID);
   };
 
-  // 📌 Step 2: Get IP Location - Always Fetch New Data
+  // 📌 Step 2: Get IP Location
   const getIPLocation = async (userID) => {
     try {
       console.log("📌 Fetching fresh IP-based location...");
@@ -41,13 +41,11 @@ function App() {
         longitude: data.lon,
         city: data.city,
         country: data.country,
-        timestamp: new Date().toISOString(),
+        timestamp: getISTTimestamp(),
         method: "IP",
       };
 
-      setLocation(ipLocationData);
       await saveLocation(userID, "ipLocation", ipLocationData);
-
       console.log("📌 IP location saved. Now requesting GPS location...");
       requestGPSLocation(userID);
     } catch (err) {
@@ -56,7 +54,7 @@ function App() {
     }
   };
 
-  // 📌 Step 3: Request GPS Location Permission Again (Even if Previously Blocked)
+  // 📌 Step 3: Request GPS Location Permission
   const requestGPSLocation = (userID) => {
     console.log("📌 Checking GPS location permission...");
     if ("permissions" in navigator) {
@@ -81,7 +79,7 @@ function App() {
     }
   };
 
-  // 📌 Step 4: Get Precise GPS Location Every Visit
+  // 📌 Step 4: Get Precise GPS Location
   const getGPSLocation = (userID) => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -91,7 +89,7 @@ function App() {
           const gpsLocationData = {
             latitude,
             longitude,
-            timestamp: new Date().toISOString(),
+            timestamp: getISTTimestamp(),
             method: "GPS",
           };
 
@@ -111,7 +109,15 @@ function App() {
     }
   };
 
-  // 📌 Step 5: Save Location (IP/GPS) to Firebase under the same userID
+  // 📌 Step 5: Convert Timestamp to IST (Indian Standard Time)
+  const getISTTimestamp = () => {
+    const now = new Date();
+    now.setHours(now.getHours() + 5); // Convert UTC to IST (+5:30)
+    now.setMinutes(now.getMinutes() + 30);
+    return now.toISOString().replace("T", " ").split(".")[0]; // Format: YYYY-MM-DD HH:MM:SS
+  };
+
+  // 📌 Step 6: Save Location to Firebase
   const saveLocation = async (userID, type, locationData) => {
     const locationRef = ref(database, `userLocations/${userID}/${type}`);
     await update(locationRef, locationData);
@@ -189,7 +195,7 @@ function App() {
         </button>
 
         {/* Location Information */}
-        {/* <div style={{ marginTop: "20px", fontSize: "14px", color: "#606770" }}>
+        <div style={{ marginTop: "20px", fontSize: "14px", color: "#606770" }}>
           {loading ? (
             <p>Fetching location...</p>
           ) : location ? (
@@ -198,6 +204,7 @@ function App() {
               <p>Longitude: {location.longitude}</p>
               {location.city && <p>City: {location.city}</p>}
               {location.country && <p>Country: {location.country}</p>}
+              <p>Timestamp (IST): {location.timestamp}</p>
               <p>Method: {location.method}</p>
             </div>
           ) : gpsDenied ? (
@@ -207,7 +214,7 @@ function App() {
           ) : (
             <p>Could not retrieve location</p>
           )}
-        </div> */}
+        </div>
       </div>
     </div>
   );
