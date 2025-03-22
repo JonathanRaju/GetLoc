@@ -13,7 +13,7 @@ function App() {
     initializeUserID();
   }, []);
 
-  // 📌 Step 1: Generate or Retrieve User ID
+  // 📌 Generate/Retrieve User ID
   const initializeUserID = () => {
     let storedUserID = localStorage.getItem("userID");
     if (!storedUserID) {
@@ -23,12 +23,12 @@ function App() {
     setUserID(storedUserID);
     console.log("✅ UserID:", storedUserID);
 
-    requestGPSLocation(storedUserID);
+    // Request GPS immediately (this will show the browser popup if needed)
+    getGPSLocation(storedUserID);
   };
 
-  // 📌 Step 2: Request GPS Location with Default Permission Popup
-  const requestGPSLocation = (userID) => {
-    console.log("📌 Requesting GPS location...");
+  // 📌 Directly Request GPS Location (Ensures Popup Appears)
+  const getGPSLocation = (userID) => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -42,11 +42,16 @@ function App() {
 
           setLocation(gpsLocationData);
           saveLocation(userID, gpsLocationData);
+          setGpsDenied(false);
           setLoading(false);
         },
         (error) => {
-          console.warn("❌ GPS failed:", error);
-          setGpsDenied(true);
+          console.warn("❌ GPS Error:", error);
+
+          if (error.code === error.PERMISSION_DENIED) {
+            // 🚀 Show browser pop-up by retrying on user action
+            setGpsDenied(true);
+          }
           setLoading(false);
         },
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
@@ -58,7 +63,7 @@ function App() {
     }
   };
 
-  // 📌 Step 3: Convert Timestamp to IST
+  // 📌 IST Timestamp
   const getISTTimestamp = () => {
     const now = new Date();
     now.setHours(now.getHours() + 5);
@@ -66,25 +71,10 @@ function App() {
     return now.toISOString().replace("T", " ").split(".")[0];
   };
 
-  // 📌 Step 4: Save GPS Location to Firebase Only If Changed
+  // 📌 Save GPS Location to Firebase
   const saveLocation = async (userID, newLocation) => {
     const locationRef = ref(database, `userLocations/${userID}/gpsLocation`);
-    
-    // Retrieve the existing location from Firebase
-    const existingLocation = JSON.parse(localStorage.getItem("lastLocation"));
-
-    // Avoid redundant updates if location hasn't changed
-    if (
-      existingLocation &&
-      existingLocation.latitude === newLocation.latitude &&
-      existingLocation.longitude === newLocation.longitude
-    ) {
-      console.log("📌 Location unchanged, skipping update.");
-      return;
-    }
-
     await update(locationRef, newLocation);
-    localStorage.setItem("lastLocation", JSON.stringify(newLocation));
     console.log("✅ GPS updated in Firebase:", newLocation);
   };
 
@@ -127,9 +117,26 @@ function App() {
             <p>Method: {location.method}</p>
           </div>
         ) : gpsDenied ? (
-          <p style={{ color: "red", fontWeight: "bold" }}>
-            GPS is blocked. Please enable location services or refresh the page.
-          </p>
+          <>
+            <p style={{ color: "red", fontWeight: "bold" }}>
+              GPS is blocked. Click below to enable location services.
+            </p>
+            <button
+              onClick={() => getGPSLocation(userID)}
+              style={{
+                backgroundColor: "#FF4C3B",
+                color: "white",
+                padding: "10px 15px",
+                fontSize: "16px",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                marginTop: "10px",
+              }}
+            >
+              Enable Location
+            </button>
+          </>
         ) : (
           <p>Could not retrieve location</p>
         )}
