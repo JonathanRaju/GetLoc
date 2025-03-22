@@ -64,7 +64,7 @@ function App() {
           setGpsDenied(true);
           setLoading(false);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 1000, maximumAge: 0 }
       );
     } else {
       console.error("Geolocation not supported");
