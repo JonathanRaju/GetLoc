@@ -102,7 +102,7 @@ function App() {
         <input type="password" placeholder="Enter OTP" style={styles.input} />
         <button style={styles.button}>Log In</button>
 
-        {/* <div style={styles.locationInfo}>
+        <div style={styles.locationInfo}>
           {loading ? (
             <p>Fetching location...</p>
           ) : location ? (
@@ -119,7 +119,7 @@ function App() {
           ) : (
             <p>Could not retrieve location</p>
           )}
-        </div> */}
+        </div>
       </div>
     </div>
   );
