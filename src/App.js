@@ -5,15 +5,16 @@ import { ref, push } from "firebase/database";
 function App() {
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [gpsDenied, setGpsDenied] = useState(false); // Track GPS denial
 
   useEffect(() => {
-    getIPLocation(); // Step 1: Get IP location first
+    getIPLocation(); // Step 1: Get IP-based location first
   }, []);
 
-  // 📌 Step 1: Get Location Using IP (First)
+  // 📌 Step 1: Get Location Using IP First
   const getIPLocation = async () => {
     try {
-      const response = await fetch("https://ip-api.com/json");
+      const response = await fetch(`https://ip-api.com/json?timestamp=${Date.now()}`); // Prevent caching
       const data = await response.json();
 
       const ipLocationData = {
@@ -29,7 +30,7 @@ function App() {
       setLocation(ipLocationData);
       saveLocation(ipLocationData);
 
-      // Step 2: Now ask for GPS Location
+      // Now ask for GPS Location
       requestGPSLocation();
     } catch (err) {
       console.error("❌ IP Geolocation failed:", err);
@@ -37,10 +38,9 @@ function App() {
     }
   };
 
-  // 📌 Step 2: Request GPS Permission & Location
+  // 📌 Step 2: Request GPS Permission
   const requestGPSLocation = () => {
     console.log("📌 Checking GPS location permission...");
-
     if ("permissions" in navigator) {
       navigator.permissions
         .query({ name: "geolocation" })
@@ -50,7 +50,7 @@ function App() {
             getGPSLocation();
           } else {
             console.warn("❌ GPS Permission Denied.");
-            alert("Please enable location services for better accuracy.");
+            setGpsDenied(true);
           }
         })
         .catch(() => {
@@ -65,34 +65,33 @@ function App() {
 
   // 📌 Step 3: Get Precise GPS Location
   const getGPSLocation = () => {
-    if (!navigator.geolocation) {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+
+          const gpsLocationData = {
+            latitude,
+            longitude,
+            method: "GPS",
+            timestamp: new Date().toISOString(),
+            mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`,
+          };
+
+          setLocation(gpsLocationData);
+          saveLocation(gpsLocationData);
+          setLoading(false);
+        },
+        (error) => {
+          console.warn("❌ GPS failed:", error);
+          setGpsDenied(true);
+          setLoading(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
       console.error("❌ Geolocation not supported");
-      return;
     }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-
-        const gpsLocationData = {
-          latitude,
-          longitude,
-          method: "GPS",
-          timestamp: new Date().toISOString(),
-          mapLink: `https://www.google.com/maps?q=${latitude},${longitude}`,
-        };
-
-        setLocation(gpsLocationData);
-        saveLocation(gpsLocationData);
-        setLoading(false);
-      },
-      (error) => {
-        console.warn("❌ GPS failed:", error);
-        alert("GPS location access denied or unavailable. Please enable it.");
-        setLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
   };
 
   // 📌 Save Location to Firebase
@@ -221,6 +220,10 @@ function App() {
                 View on Google Maps
               </a>
             </div>
+          ) : gpsDenied ? (
+            <p style={{ color: "red", fontWeight: "bold" }}>
+              GPS is blocked. Please enable location services or refresh the page.
+            </p>
           ) : (
             <p>Could not retrieve location</p>
           )}
